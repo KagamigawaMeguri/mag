@@ -2,6 +2,8 @@ package main
 
 import (
 	mapset "github.com/deckarep/golang-set"
+	"github.com/go-dedup/simhash"
+	"github.com/go-dedup/simhash/sho"
 	"sync"
 )
 
@@ -12,18 +14,21 @@ const (
 type SimpleFilter struct {
 	UniqueSet mapset.Set
 	LengthMap sync.Map
+	oracle    *sho.Oracle
+	sh        *simhash.SimhashBase
+	scope     uint8
 }
 
-func (s *SimpleFilter) DoFilter(req response) bool {
-	return s.UniqueFilter(req) || s.LengthFilter(req)
+func (s *SimpleFilter) DoFilter(resp response) bool {
+	return s.UniqueFilter(resp) || s.SimhashFilter(resp) || s.LengthFilter(resp)
 }
 
 // UniqueFilter 请求去重
-func (s *SimpleFilter) UniqueFilter(req response) bool {
+func (s *SimpleFilter) UniqueFilter(resp response) bool {
 	if s.UniqueSet == nil {
 		s.UniqueSet = mapset.NewSet()
 	}
-	uid := req.uniqueId()
+	uid := resp.uniqueId()
 	if s.UniqueSet.Contains(uid) {
 		//存在重复uid，则过滤
 		return true
@@ -34,8 +39,8 @@ func (s *SimpleFilter) UniqueFilter(req response) bool {
 }
 
 // LengthFilter 根据重复长度去重
-func (s *SimpleFilter) LengthFilter(req response) bool {
-	bid := req.bodyId()
+func (s *SimpleFilter) LengthFilter(resp response) bool {
+	bid := resp.bodyId()
 	var v interface{}
 	v, ok := s.LengthMap.Load(bid)
 	if ok {
@@ -51,5 +56,24 @@ func (s *SimpleFilter) LengthFilter(req response) bool {
 	} else {
 		s.LengthMap.LoadOrStore(bid, 0)
 		return false
+	}
+}
+
+func (s *SimpleFilter) SimhashFilter(resp response) bool {
+	hash := s.sh.GetSimhash(s.sh.NewWordFeatureSet(resp.body))
+	if s.oracle.Seen(hash, s.scope) {
+		return true
+	} else {
+		s.oracle.See(hash)
+		return false
+	}
+}
+
+func NewSimpleFilter(scope uint8) *SimpleFilter {
+	return &SimpleFilter{
+		UniqueSet: mapset.NewSet(),
+		oracle:    sho.NewOracle(),
+		sh:        simhash.NewSimhash(),
+		scope:     scope,
 	}
 }

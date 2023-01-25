@@ -27,7 +27,7 @@ const (
 )
 
 var (
-	simpleFilter = new(SimpleFilter)
+	simpleFilter = NewSimpleFilter(uint8(25))
 	logger, _    = initLogger()
 	log          = logger.Sugar()
 )
