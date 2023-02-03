@@ -1,8 +1,9 @@
-package main
+package gohttp
 
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/KagamigawaMeguri/mag/opt"
 	"io"
 	"net/http"
 	"net/url"
@@ -30,12 +31,12 @@ type HTTPClient struct {
 }
 
 // 对参数进行一些包装，构造成HTTPClient
-func newHTTPClient(c config) (*HTTPClient, error) {
+func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
 	var hc HTTPClient
-
+	var err error
 	var proxyURLFunc func(*http.Request) (*url.URL, error)
-	if c.proxy != "" {
-		proxyURL, err := url.Parse(c.proxy)
+	if options.Proxy != "" {
+		proxyURL, err := url.Parse(options.Proxy)
 		if err != nil {
 			return nil, fmt.Errorf("proxy URL is invalid (%w)", err)
 		}
@@ -45,7 +46,7 @@ func newHTTPClient(c config) (*HTTPClient, error) {
 	}
 
 	var redirectFunc func(req *http.Request, via []*http.Request) error
-	if !c.followLocation {
+	if !options.FollowRedirects {
 		redirectFunc = func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		}
@@ -58,7 +59,7 @@ func newHTTPClient(c config) (*HTTPClient, error) {
 		MinVersion: tls.VersionTLS10,
 	}
 	hc.client = &http.Client{
-		Timeout:       time.Duration(c.timeout * 1000000),
+		Timeout:       time.Duration(options.Timeout * 1000000),
 		CheckRedirect: redirectFunc,
 		Transport: &http.Transport{
 			Proxy:               proxyURLFunc,
@@ -66,39 +67,29 @@ func newHTTPClient(c config) (*HTTPClient, error) {
 			MaxIdleConnsPerHost: 0,
 			TLSClientConfig:     &tlsConfig,
 		}}
-	if !c.noHeaders {
-		for _, h := range c.headers {
-			keyAndValue := strings.SplitN(h, ":", 2)
-			if len(keyAndValue) != 2 {
-				return nil, fmt.Errorf("invalid header format for header %q", h)
-			}
-			key := strings.TrimSpace(keyAndValue[0])
-			value := strings.TrimSpace(keyAndValue[1])
-			if len(key) == 0 {
-				return nil, fmt.Errorf("invalid header format for header %q - name is empty", h)
-			}
-			hc.headers[key] = value
-		}
+	hc.headers, err = options.Headers.TransformMap()
+	if err != nil {
+		return nil, err
 	}
-	if c.method == "" {
+	if options.Method == "" {
 		// 默认get
 		hc.method = http.MethodGet
 	} else {
-		hc.method = c.method
+		hc.method = options.Method
 	}
 
-	if c.body == "" {
+	if options.Body == "" {
 		hc.body = nil
 	} else {
-		hc.body = strings.NewReader(c.body)
+		hc.body = strings.NewReader(options.Body)
 	}
 	return &hc, nil
 }
 
-func (hc *HTTPClient) request(r request) (response, error) {
+func (hc *HTTPClient) Request(r Request) (Response, error) {
 	req, err := http.NewRequest(hc.method, r.URL(), hc.body)
 	if err != nil {
-		return response{request: r}, err
+		return Response{Request: r}, err
 	}
 	req.Host = r.host
 	//设置自定义header
@@ -116,7 +107,7 @@ func (hc *HTTPClient) request(r request) (response, error) {
 		defer resp.Body.Close()
 	}
 	if err != nil {
-		return response{request: r}, err
+		return Response{Request: r}, err
 	}
 	// 提取响应头
 	hs := make([]string, 0)
@@ -131,12 +122,12 @@ func (hc *HTTPClient) request(r request) (response, error) {
 		resp.StatusCode = 200
 		resp.Status = "200 OK"
 	}
-	return response{
+	return Response{
 		client:     hc,
-		request:    r,
-		status:     resp.Status,
-		statusCode: resp.StatusCode,
+		Request:    r,
+		Status:     resp.Status,
+		StatusCode: resp.StatusCode,
 		headers:    hs,
-		body:       body,
+		Body:       body,
 	}, err
 }

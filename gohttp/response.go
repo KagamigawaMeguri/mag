@@ -1,4 +1,4 @@
-package main
+package gohttp
 
 import (
 	"crypto/md5"
@@ -11,59 +11,55 @@ import (
 )
 
 // 返回包结构体
-type response struct {
+type Response struct {
 	client     *HTTPClient
-	request    request
-	status     string
-	statusCode int
+	Request    Request
+	Status     string
+	StatusCode int
 	headers    []string
-	body       []byte
-	err        error
+	Body       []byte
+	Err        error
 	elapsed    time.Duration
 }
 
 // 返回请求包和返回包的字符串
-func (r response) String() string {
+func (r *Response) String() string {
 	//更换为strings.Builder以求提高性能
 	//经过benchmark测试，以下方式资源占用最少且性能最高
 	//唯一缺点写起来不太优雅
 	var b strings.Builder
-	b.Grow(512 + len(r.body)) //预先开辟空间，可应对大部分情况
+	b.Grow(512 + len(r.Body)) //预先开辟空间，可应对大部分情况
 
-	b.WriteString(r.request.URL() + "\n\n")
-	b.WriteString(r.client.method + " " + r.request.path + " HTTP/1.1\n")
+	b.WriteString(r.Request.URL() + "\n\n")
+	b.WriteString(r.client.method + " " + r.Request.path + " HTTP/1.1\n")
 	for k, v := range r.client.headers {
 		b.WriteString(k + ": " + v + "\n")
 	}
 	b.WriteString("\n\n")
-	b.WriteString("HTTP/1.1 " + r.status + "\n")
+	b.WriteString("HTTP/1.1 " + r.Status + "\n")
 	for _, h := range r.headers {
 		b.WriteString(h + "\n")
 	}
 	b.WriteString("\n")
-	b.Write(r.body)
+	b.Write(r.Body)
 
 	return b.String()
 }
 
-func (r response) StringNoHeaders() string {
+func (r *Response) StringNoHeaders() string {
 	var b strings.Builder
-	b.Write(r.body)
+	b.Write(r.Body)
 	return b.String()
 }
 
-// save 将请求包和返回包写入到输出目录
-func (r response) save(pathPrefix string, noHeaders bool) (string, error) {
+// Save 将请求包和返回包写入到输出目录
+func (r Response) Save(pathPrefix string) (string, error) {
 
 	content := r.String()
-	if noHeaders {
-		content = r.StringNoHeaders()
-	}
-
 	checksum := MD5(content)
-	basename := strings.ReplaceAll(r.request.path, "/", "_")
+	basename := strings.ReplaceAll(r.Request.path, "/", "_")
 	parts := []string{pathPrefix}
-	dir := strings.Replace(r.request.host, ":", "_", 1)
+	dir := strings.Replace(r.Request.host, ":", "_", 1)
 	parts = append(parts, dir)
 	parts = append(parts, basename+"_"+checksum[:6])
 
@@ -84,11 +80,11 @@ func (r response) save(pathPrefix string, noHeaders bool) (string, error) {
 	return p, nil
 }
 
-func (r response) uniqueId() string {
-	return MD5(r.client.method + r.request.host + string(r.body))
+func (r Response) UniqueId() string {
+	return MD5(r.client.method + r.Request.host + string(r.Body))
 }
-func (r response) bodyId() string {
-	return MD5(r.client.method + r.request.host + strconv.Itoa(len(r.body)))
+func (r Response) BodyId() string {
+	return MD5(r.client.method + r.Request.host + strconv.Itoa(len(r.Body)))
 }
 
 func MD5(s string) string {

@@ -1,218 +1,115 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"strconv"
-	"strings"
+	"github.com/KagamigawaMeguri/mag/opt"
+	"github.com/projectdiscovery/goflags"
+	"regexp"
 )
 
-type multiStringArgs []string
+// 参数处理
+func processArgs() (*opt.Options, error) {
+	//接收参数
+	options := &opt.Options{}
+	flagSet := goflags.NewFlagSet()
+	flagSet.SetDescription("兼顾效率与负载的多任务目录扫描器")
 
-func (h *multiStringArgs) Set(val string) error {
-	for _, v := range strings.Split(val, ",") {
-		*h = append(*h, v)
+	flagSet.CreateGroup("input", "Input",
+		flagSet.StringVarP(&options.Hosts, "host", "h", "./host.txt", "input file containing list of hosts to process"),
+		flagSet.StringVarP(&options.Paths, "path", "p", "./path.txt", "input file containing list of paths to process"),
+	)
+
+	flagSet.CreateGroup("output", "Output",
+		flagSet.StringVarP(&options.Output, "output", "o", "./out", "dir to write output results"),
+		flagSet.BoolVarP(&options.DisableOutput, "disableoutput", "do", false, "disable output"),
+	)
+
+	flagSet.CreateGroup("configs", "Configurations",
+		flagSet.StringVarP(&options.Method, "method", "x", "", "gohttp methods to probe"),
+		flagSet.StringVar(&options.Body, "body", "", "post body to include in gohttp gohttp"),
+		flagSet.StringVarP(&options.Proxy, "gohttp-proxy", "proxy", "", "gohttp proxy to use (eg http://127.0.0.1:8080)"),
+		flagSet.VarP(&options.Headers, "header", "H", "custom gohttp headers to send with gohttp"),
+		flagSet.DurationVarP(&options.Delay, "delay", "d", 5, "duration between each gohttp gohttp with same host (eg: 200ms, 1s)"),
+		flagSet.IntVar(&options.Timeout, "timeout", 10, "timeout in seconds"),
+		flagSet.BoolVarP(&options.FollowRedirects, "follow-redirects", "fr", false, "follow gohttp redirects"),
+		flagSet.BoolVar(&options.Slow, "slow", false, "Server extremely friendly mode"),
+		flagSet.IntVarP(&options.Threads, "thread", "t", 25, "number of threads to use"),
+		flagSet.BoolVar(&options.RandomAgent, "random-agent", true, "enable Random User-Agent to use"),
+	)
+
+	var (
+		matchStatusCode string
+		matchLength     string
+		matchString     string
+		matchRegex      string
+	)
+	flagSet.CreateGroup("matchers", "Matchers",
+		flagSet.StringVarP(&matchStatusCode, "match-code", "mc", "", "match response with specified status code (-mc 200,302)"),
+		flagSet.StringVarP(&matchLength, "match-length", "ml", "", "match response with specified content length (-ml 100,102)"),
+		flagSet.StringVarP(&matchString, "match-string", "ms", "", "match response with specified string (-ms admin)"),
+		flagSet.StringVarP(&matchRegex, "match-regex", "mr", "", "match response with specified regex (-mr admin)"),
+	)
+
+	var (
+		filterStatusCode string
+		filterLength     string
+		filterString     string
+		filterRegex      string
+	)
+	flagSet.CreateGroup("filters", "Filters",
+		flagSet.StringVarP(&filterStatusCode, "filter-code", "fc", "", "filter response with specified status code (-fc 403,401)"),
+		flagSet.StringVarP(&filterLength, "filter-length", "fl", "", "filter response with specified content length (-ml 100,102)"),
+		flagSet.StringVarP(&filterString, "filter-string", "fs", "", "filter response with specified string (-fs admin)"),
+		flagSet.StringVarP(&filterRegex, "filter-regex", "fr", "", "filter response with specified regex (-fe admin)"),
+	)
+
+	flagSet.CreateGroup("debug", "Debug",
+		flagSet.BoolVarP(&options.Verbose, "verbose", "v", false, "verbose mode"),
+	)
+
+	_ = flagSet.Parse()
+
+	//参数校验与二次处理
+	if options.Paths != "" && !fileNameIsGlob(options.Paths) && !isFile(options.Paths) {
+		return options, fmt.Errorf("file '%s' does not exist", options.Paths)
 	}
-	return nil
-}
 
-func (h *multiStringArgs) String() string {
-	return "string"
-}
-
-type multiIntArgs []int
-
-func (s *multiIntArgs) Set(val string) error {
-	for _, v := range strings.Split(val, ",") {
-		i, _ := strconv.Atoi(v)
-		*s = append(*s, i)
+	if options.Hosts != "" && !fileNameIsGlob(options.Hosts) && !isFile(options.Hosts) {
+		return options, fmt.Errorf("file '%s' does not exist", options.Hosts)
 	}
-	return nil
-}
 
-func (s *multiIntArgs) String() string {
-	return "string"
-}
+	if options.Output != "" && !fileNameIsGlob(options.Output) && !isDir(options.Output) {
+		return options, fmt.Errorf("'%s' is not a folder", options.Output)
+	}
 
-func (s *multiIntArgs) Includes(search int) bool {
-	for _, status := range *s {
-		if status == search {
-			return true
+	var err error
+	if options.MatchStatusCode, err = stringToMapsetInt(matchStatusCode); err != nil {
+		return options, fmt.Errorf("invalid value for match status code option: %s", err)
+	}
+
+	if options.MatchLength, err = stringToMapsetInt(matchLength); err != nil {
+		return options, fmt.Errorf("invalid value for match content length option: %s", err)
+	}
+
+	if matchRegex != "" {
+		if options.MatchRegex, err = regexp.Compile(matchRegex); err != nil {
+			return options, fmt.Errorf("invalid value for match regex option: %s", err)
 		}
 	}
-	return false
-}
 
-type config struct {
-	method         string
-	body           string
-	threads        int
-	delay          int
-	headers        multiStringArgs
-	followLocation bool
-	matchString    string
-	matchRegex     string
-	matchCode      multiIntArgs
-	filterLength   multiIntArgs
-	filterString   string
-	filterRegex    string
-	timeout        int
-	verbose        bool
-	paths          string
-	hosts          string
-	output         string
-	noHeaders      bool
-	proxy          string
-	slow           bool
-}
-
-func processArgs() config {
-
-	method := "GET"
-	flag.StringVar(&method, "method", "GET", "")
-	flag.StringVar(&method, "x", "GET", "")
-
-	var headers multiStringArgs
-	flag.Var(&headers, "header", "")
-	flag.Var(&headers, "H", "")
-
-	body := ""
-	flag.StringVar(&body, "body", "", "")
-	flag.StringVar(&body, "b", "", "")
-
-	threads := 20
-	flag.IntVar(&threads, "threads", 20, "")
-	flag.IntVar(&threads, "t", 20, "")
-
-	delay := 5000
-	flag.IntVar(&delay, "delay", 5000, "")
-	flag.IntVar(&delay, "d", 5000, "")
-
-	followRedirects := false
-	flag.BoolVar(&followRedirects, "follow-redirects", false, "")
-	flag.BoolVar(&followRedirects, "fr", false, "")
-
-	matchRegex := ""
-	flag.StringVar(&matchRegex, "match-regex", "", "")
-	flag.StringVar(&matchRegex, "mr", "", "")
-
-	matchString := ""
-	flag.StringVar(&matchString, "match-string", "", "")
-	flag.StringVar(&matchString, "ms", "", "")
-
-	var matchCode multiIntArgs
-	flag.Var(&matchCode, "match-code", "")
-	flag.Var(&matchCode, "mc", "")
-
-	filterString := ""
-	flag.StringVar(&filterString, "filter-string", "", "")
-	flag.StringVar(&filterString, "fs", "", "")
-
-	filterRegex := ""
-	flag.StringVar(&filterRegex, "filter-regex", "", "")
-	flag.StringVar(&filterRegex, "fe", "", "")
-
-	var filterLength multiIntArgs
-	flag.Var(&filterLength, "filter-length", "")
-	flag.Var(&filterLength, "fl", "")
-
-	timeout := 10000
-	flag.IntVar(&timeout, "timeout", 10000, "")
-
-	var slow bool
-	flag.BoolVar(&slow, "slow", false, "")
-
-	noHeaders := false
-	flag.BoolVar(&noHeaders, "no-headers", false, "")
-
-	verbose := false
-	flag.BoolVar(&verbose, "verbose", false, "")
-	flag.BoolVar(&verbose, "v", false, "")
-
-	var proxy string
-	flag.StringVar(&proxy, "http-proxy", "", "")
-	flag.StringVar(&proxy, "proxy", "", "")
-
-	flag.Parse()
-
-	// path路径
-	paths := flag.Arg(0)
-	if paths == "" {
-		paths = defaultPathsFile
+	if options.FilterStatusCode, err = stringToMapsetInt(filterStatusCode); err != nil {
+		return options, fmt.Errorf("invalid value for filter status code option: %s", err)
 	}
 
-	// host路径
-	hosts := flag.Arg(1)
-	if hosts == "" {
-		hosts = defaultHostsFile
+	if options.FilterLength, err = stringToMapsetInt(filterLength); err != nil {
+		return options, fmt.Errorf("invalid value for filter content length option: %s", err)
 	}
 
-	// 输出路径
-	output := flag.Arg(2)
-	if output == "" {
-		output = defaultOutputDir
+	if filterRegex != "" {
+		if options.FilterRegex, err = regexp.Compile(filterRegex); err != nil {
+			return options, fmt.Errorf("invalid value for filter regex option: %s", err)
+		}
 	}
 
-	return config{
-		method:         method,
-		body:           body,
-		threads:        threads,
-		delay:          delay,
-		filterString:   filterString,
-		headers:        headers,
-		followLocation: followRedirects,
-		filterRegex:    filterRegex,
-		matchRegex:     matchRegex,
-		matchString:    matchString,
-		matchCode:      matchCode,
-		timeout:        timeout,
-		verbose:        verbose,
-		paths:          paths,
-		hosts:          hosts,
-		output:         output,
-		noHeaders:      noHeaders,
-		filterLength:   filterLength,
-		proxy:          proxy,
-	}
-}
-
-func init() {
-	flag.Usage = func() {
-		h := "基于path的服务器友好型多host目录扫描器\n"
-
-		h += "\n用法:\n"
-		h += "  mag [pathsFile] [hostsFile] [outputDir]\n"
-
-		h += "\n请求:\n"
-		h += fmt.Sprintf("%-36s\t%s\n", "  -X, -method <string>", "设置请求方法(默认GET)")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -H, -header <string>", "设置请求头")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -b, -body <string> ", "设置POST请求体")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -t, -threads <int>", "设置并发数(默认20)")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -d, -delay <int>", "设置相同host间的延迟(默认5000ms)")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -timeout <int>", "设置超时时间(默认10000ms)")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -proxy <string>", "设置代理")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -fr, -follow-redirects", "允许重定向")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -no-headers", "不设置请求头")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -slow", "服务器极度友好模式")
-
-		h += "\n匹配:\n"
-		h += fmt.Sprintf("%-36s\t%s\n", "  -ms, -match-string <string>", "检测到指定字符串则保存")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -mr, -match-regex <string>", "检测到指定regex则保存")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -mc, -match-code <int>", "检测到指定状态码则保存：-match-code 200,301")
-
-		h += "\n过滤:\n"
-		h += fmt.Sprintf("%-36s\t%s\n", "  -fs, -filter-string <string>", "检测到指定字符串则跳过")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -fe, -filter-regex <string>", "检测到指定regex则跳过")
-		h += fmt.Sprintf("%-36s\t%s\n", "  -fl, -filter-length <int>", "检测到指定长度则跳过：-match-code 200,301")
-
-		h += "\nDEBUG:\n"
-		h += fmt.Sprintf("%-36s\t%s\n", "  -v,  -verbose", "Verbose mode")
-
-		h += "\n默认路径:\n"
-		h += "  pathsFile: ./paths\n"
-		h += "  hostsFile: ./hosts\n"
-		h += "  outputDir: ./out\n"
-
-		fmt.Println(h)
-	}
+	return options, nil
 }
