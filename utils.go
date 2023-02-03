@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	mapset "github.com/deckarep/golang-set"
+	mapset "github.com/deckarep/golang-set/v2"
 	"os"
 	"regexp"
 	"strconv"
@@ -51,7 +51,7 @@ func readLines(filename string) ([]string, error) {
 }
 
 // 逗号分割字符串转mapset[int]
-func stringToMapsetInt(s string) (mapset.Set, error) {
+func stringToMapsetInt(s string) (mapset.Set[int], error) {
 	set := mapset.NewSet[int]()
 	if s == "" {
 		return set, nil

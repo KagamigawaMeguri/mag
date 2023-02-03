@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/deckarep/golang-set v1.8.0
+	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/go-dedup/simhash v0.0.0-20170904020510-9ecaca7b509c
 	github.com/projectdiscovery/goflags v0.1.6
 	go.uber.org/zap v1.24.0

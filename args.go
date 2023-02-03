@@ -15,26 +15,26 @@ func processArgs() (*opt.Options, error) {
 	flagSet.SetDescription("兼顾效率与负载的多任务目录扫描器")
 
 	flagSet.CreateGroup("input", "Input",
-		flagSet.StringVarP(&options.Hosts, "host", "h", "./host.txt", "input file containing list of hosts to process"),
-		flagSet.StringVarP(&options.Paths, "path", "p", "./path.txt", "input file containing list of paths to process"),
+		flagSet.StringVarP(&options.Hosts, "list", "l", "./host.txt", "目标主机文件"),
+		flagSet.StringVarP(&options.Paths, "path", "w", "./path.txt", "路径字典文件"),
 	)
 
 	flagSet.CreateGroup("output", "Output",
-		flagSet.StringVarP(&options.Output, "output", "o", "./out", "dir to write output results"),
-		flagSet.BoolVarP(&options.DisableOutput, "disableoutput", "do", false, "disable output"),
+		flagSet.StringVarP(&options.Output, "output", "o", "./out", "输出路径"),
+		flagSet.BoolVarP(&options.DisableOutput, "disableoutput", "do", false, "禁用输出"),
 	)
 
 	flagSet.CreateGroup("configs", "Configurations",
-		flagSet.StringVarP(&options.Method, "method", "x", "", "gohttp methods to probe"),
-		flagSet.StringVar(&options.Body, "body", "", "post body to include in gohttp gohttp"),
-		flagSet.StringVarP(&options.Proxy, "gohttp-proxy", "proxy", "", "gohttp proxy to use (eg http://127.0.0.1:8080)"),
-		flagSet.VarP(&options.Headers, "header", "H", "custom gohttp headers to send with gohttp"),
-		flagSet.DurationVarP(&options.Delay, "delay", "d", 5, "duration between each gohttp gohttp with same host (eg: 200ms, 1s)"),
-		flagSet.IntVar(&options.Timeout, "timeout", 10, "timeout in seconds"),
-		flagSet.BoolVarP(&options.FollowRedirects, "follow-redirects", "fr", false, "follow gohttp redirects"),
-		flagSet.BoolVar(&options.Slow, "slow", false, "Server extremely friendly mode"),
-		flagSet.IntVarP(&options.Threads, "thread", "t", 25, "number of threads to use"),
-		flagSet.BoolVar(&options.RandomAgent, "random-agent", true, "enable Random User-Agent to use"),
+		flagSet.StringVarP(&options.Method, "method", "x", "", "自定义请求方法"),
+		flagSet.StringVar(&options.Body, "body", "", "自定义请求包"),
+		flagSet.StringVarP(&options.Proxy, "gohttp-proxy", "proxy", "", "设置代理 (eg http://127.0.0.1:8080)"),
+		flagSet.VarP(&options.Headers, "header", "H", "自定义请求头"),
+		flagSet.DurationVarP(&options.Delay, "delay", "d", 5*10000000, "扫描时相同host间最小延迟 (eg: 200ms, 1s)"),
+		flagSet.IntVar(&options.Timeout, "timeout", 10, "请求超时时间"),
+		flagSet.BoolVarP(&options.FollowRedirects, "follow", "f", true, "是否允许重定向"),
+		flagSet.BoolVar(&options.Slow, "slow", false, "服务器极度友好模式"),
+		flagSet.IntVarP(&options.Threads, "thread", "t", 25, "最大线程数"),
+		flagSet.BoolVar(&options.RandomAgent, "random-agent", true, "是否启动随机UA-待开发"),
 	)
 
 	var (
@@ -44,10 +44,10 @@ func processArgs() (*opt.Options, error) {
 		matchRegex      string
 	)
 	flagSet.CreateGroup("matchers", "Matchers",
-		flagSet.StringVarP(&matchStatusCode, "match-code", "mc", "", "match response with specified status code (-mc 200,302)"),
-		flagSet.StringVarP(&matchLength, "match-length", "ml", "", "match response with specified content length (-ml 100,102)"),
-		flagSet.StringVarP(&matchString, "match-string", "ms", "", "match response with specified string (-ms admin)"),
-		flagSet.StringVarP(&matchRegex, "match-regex", "mr", "", "match response with specified regex (-mr admin)"),
+		flagSet.StringVarP(&matchStatusCode, "match-code", "mc", "", "匹配指定状态码 (eg: -mc 200,302)"),
+		flagSet.StringVarP(&matchLength, "match-length", "ml", "", "匹配指定长度 (eg: -ml 100,102)"),
+		flagSet.StringVarP(&matchString, "match-string", "ms", "", "匹配指定字符串 (eg: -ms admin)"),
+		flagSet.StringVarP(&matchRegex, "match-regex", "mr", "", "匹配指定正则 (eg: -mr admin)"),
 	)
 
 	var (
@@ -57,10 +57,10 @@ func processArgs() (*opt.Options, error) {
 		filterRegex      string
 	)
 	flagSet.CreateGroup("filters", "Filters",
-		flagSet.StringVarP(&filterStatusCode, "filter-code", "fc", "", "filter response with specified status code (-fc 403,401)"),
-		flagSet.StringVarP(&filterLength, "filter-length", "fl", "", "filter response with specified content length (-ml 100,102)"),
-		flagSet.StringVarP(&filterString, "filter-string", "fs", "", "filter response with specified string (-fs admin)"),
-		flagSet.StringVarP(&filterRegex, "filter-regex", "fr", "", "filter response with specified regex (-fe admin)"),
+		flagSet.StringVarP(&filterStatusCode, "filter-code", "fc", "", "过滤指定状态码 (eg: -fc 403,401)"),
+		flagSet.StringVarP(&filterLength, "filter-length", "fl", "", "过滤指定长度 (eg: -ml 100,102)"),
+		flagSet.StringVarP(&filterString, "filter-string", "fs", "", "过滤指定长度 (eg: -fs admin)"),
+		flagSet.StringVarP(&filterRegex, "filter-regex", "fr", "", "过滤指定正则 (eg: -fe admin)"),
 	)
 
 	flagSet.CreateGroup("debug", "Debug",

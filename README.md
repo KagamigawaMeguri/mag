@@ -89,40 +89,46 @@
 ## Usage
 
 ```
-兼顾效率与负载的多任务服务器友好型目录扫描器
+兼顾效率与负载的多任务目录扫描器
 
-用法:
-  mag [pathsFile] [hostsFile] [outputDir]
+Usage:
+  mag.exe [flags]
 
-请求:
-  -X, -method <string>                  设置请求方法(默认GET)
-  -H, -header <string>                  设置请求头
-  -b, -body <string>                    设置POST请求体
-  -t, -threads <int>                    设置并发数(默认20)
-  -d, -delay <int>                      设置相同host间的延迟(默认5000ms)
-  -timeout <int>                        设置超时时间(默认10000ms)
-  -proxy <string>                       设置代理
-  -fr, -follow-redirects                允许重定向
-  -no-headers                           不设置请求头
-  -slow                                 服务器极度友好模式
+Flags:
+INPUT:
+   -l, -list string  目标主机文件 (default "./host.txt")
+   -w, -path string  路径字典文件 (default "./path.txt")
 
-匹配:
-  -ms, -match-string <string>           检测到指定字符串则保存
-  -mr, -match-regex <string>            检测到指定regex则保存
-  -mc, -match-code <int>                检测到指定状态码则保存：-match-code 200,301
+OUTPUT:
+   -o, -output string   输出路径 (default "./out")
+   -do, -disableoutput  禁用输出
 
-过滤:
-  -fs, -filter-string <string>          检测到指定字符串则跳过
-  -fe, -filter-regex <string>           检测到指定regex则跳过
-  -fl, -filter-length <int>             检测到指定长度则跳过：-match-code 200,301
+CONFIGURATIONS:
+   -x, -method string            自定义请求方法
+   -body string                  自定义请求包
+   -proxy, -gohttp-proxy string  设置代理 (eg http://127.0.0.1:8080)
+   -H, -header string[]          自定义请求头
+   -d, -delay duration           扫描时相同host间最小延迟 (eg: 200ms, 1s) (default 50ms)
+   -timeout int                  请求超时时间 (default 10)
+   -f, -follow                   是否允许重定向 (default true)
+   -slow                         服务器极度友好模式
+   -t, -thread int               最大线程数 (default 25)
+   -random-agent                 是否启动随机UA-待开发 (default true)
+
+MATCHERS:
+   -mc, -match-code string    匹配指定状态码 (eg: -mc 200,302)
+   -ml, -match-length string  匹配指定长度 (eg: -ml 100,102)
+   -ms, -match-string string  匹配指定字符串 (eg: -ms admin)
+   -mr, -match-regex string   匹配指定正则 (eg: -mr admin)
+
+FILTERS:
+   -fc, -filter-code string    过滤指定状态码 (eg: -fc 403,401)
+   -fl, -filter-length string  过滤指定长度 (eg: -ml 100,102)
+   -fs, -filter-string string  过滤指定长度 (eg: -fs admin)
+   -fr, -filter-regex string   过滤指定正则 (eg: -fe admin)
 
 DEBUG:
-  -v,  -verbose                         Verbose mode
-
-默认路径:
-  pathsFile: ./paths
-  hostsFile: ./hosts
-  outputDir: ./out
+   -v, -verbose  verbose mode
 ```
 
 ## Acknowledgement
