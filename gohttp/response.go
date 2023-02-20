@@ -31,7 +31,7 @@ func (r *Response) String() string {
 	b.Grow(512 + len(r.Body)) //预先开辟空间，可应对大部分情况
 
 	b.WriteString(r.Request.URL() + "\n\n")
-	b.WriteString(r.client.method + " " + r.Request.path + " HTTP/1.1\n")
+	b.WriteString(r.client.method + " " + r.Request.Path + " HTTP/1.1\n")
 	for k, v := range r.client.headers {
 		b.WriteString(k + ": " + v + "\n")
 	}
@@ -53,13 +53,13 @@ func (r *Response) StringNoHeaders() string {
 }
 
 // Save 将请求包和返回包写入到输出目录
-func (r Response) Save(pathPrefix string) (string, error) {
+func (r *Response) Save(pathPrefix string) (string, error) {
 
 	content := r.String()
 	checksum := MD5(content)
-	basename := strings.ReplaceAll(r.Request.path, "/", "_")
+	basename := strings.ReplaceAll(r.Request.Path, "/", "_")
 	parts := []string{pathPrefix}
-	dir := strings.Replace(r.Request.host, ":", "_", 1)
+	dir := strings.Replace(r.Request.Host, ":", "_", 1)
 	parts = append(parts, dir)
 	parts = append(parts, basename+"_"+checksum[:6])
 
@@ -80,11 +80,11 @@ func (r Response) Save(pathPrefix string) (string, error) {
 	return p, nil
 }
 
-func (r Response) UniqueId() string {
-	return MD5(r.client.method + r.Request.host + string(r.Body))
+func (r *Response) UniqueId() string {
+	return MD5(r.client.method + r.Request.Host + string(r.Body))
 }
-func (r Response) BodyId() string {
-	return MD5(r.client.method + r.Request.host + strconv.Itoa(len(r.Body)))
+func (r *Response) BodyId() string {
+	return MD5(r.client.method + r.Request.Host + strconv.Itoa(len(r.Body)))
 }
 
 func MD5(s string) string {

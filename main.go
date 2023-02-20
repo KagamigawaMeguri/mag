@@ -5,11 +5,11 @@ import (
 	"github.com/KagamigawaMeguri/mag/gohttp"
 	"github.com/KagamigawaMeguri/mag/opt"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 // 自定义错误
@@ -26,23 +26,22 @@ var (
 func initiate(c *opt.Options) ([]string, []string, *os.File) {
 	// 读path文件
 	paths, err := readLines(c.Paths)
+	paths = Deduplicate(paths)
 	if err != nil {
 		log.Fatalf("failed to open paths file: %s", err)
-		os.Exit(1)
 	}
 
 	// 读host文件
-	hosts, err := readLines(c.Hosts)
+	hosts, err := readLines(c.Hosts, "host")
+	hosts = Deduplicate(hosts)
 	if err != nil {
 		log.Fatalf("failed to open hosts file: %s", err)
-		os.Exit(1)
 	}
 
 	// 创建输出目录
 	err = os.MkdirAll(c.Output, 0750)
 	if err != nil {
 		log.Fatalf("failed to create output directory: %s", err)
-		os.Exit(1)
 	}
 
 	// 创建index文件
@@ -50,16 +49,13 @@ func initiate(c *opt.Options) ([]string, []string, *os.File) {
 	index, err := os.OpenFile(indexFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		log.Fatalf("failed to open index file for writing: %s", err)
-		os.Exit(1)
 	}
 	return hosts, paths, index
 }
 
 func main() {
 	defer func(logger *zap.Logger) {
-		err := logger.Sync()
-		if err != nil {
-		}
+		_ = logger.Sync()
 	}(logger)
 	var err error
 	// 获取参数配置
@@ -70,18 +66,18 @@ func main() {
 	hosts, paths, index := initiate(options)
 
 	// 打印任务情况
-	fmt.Printf("[+] Urllist: %s\n"+
+	fmt.Printf("[+] Hostlist: %s\n"+
 		"[+] Method: %s\n"+
 		"[+] Threads: %d\n"+
 		"[+] Pathlist: %s\n"+
-		"[+] Timeout: %d\n", options.Hosts, options.Method, options.Threads, options.Paths, options.Delay)
+		"[+] Timeout: %s\n", options.Hosts, options.Method, options.Threads, options.Paths, options.Delay)
 
 	// 设置限速器
-	rl := newRateLimiter(time.Duration(options.Delay*1000000), options.Slow)
+	rl := newRateLimiter(options.Delay, options.Slow)
 
 	requestsChan := make(chan gohttp.Request)
 	responsesChan := make(chan gohttp.Response)
-	client, err := gohttp.NewHTTPClient(options)
+	//client, err := gohttp.NewHTTPClient(options)
 
 	// 请求处理
 	var wg sync.WaitGroup
@@ -91,9 +87,18 @@ func main() {
 		go func(items chan gohttp.Request) {
 			for r := range items {
 				rl.Block(r.Hostname()) //传入限速器判断是否限速
+				client, err := gohttp.NewHTTPClient(options)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
 				ret, err := client.Request(r)
 				if err != nil {
-					log.Warn(err)
+					log.Error(err)
+					continue
+				}
+				if options.Verbose {
+					log.Debug(r.URL())
 				}
 				responsesChan <- ret //发送请求，返回包写入responses channel
 			}
@@ -112,31 +117,34 @@ func main() {
 				}
 				continue
 			}
+			//if options.Verbose {
+			//	log.Debugf("%s [%d] [%d]", resp.Request.URL(), resp.StatusCode, len(resp.Body))
+			//}
 
-			if !options.MatchStatusCode.Contains(resp.StatusCode) {
+			if options.MatchStatusCode != nil && !(slices.Contains(options.MatchStatusCode, resp.StatusCode)) {
 				continue
 			}
-			if !options.MatchLength.Contains(len(resp.Body)) {
-				continue
-			}
-
-			if !(options.MatchRegex.String() == "") && !options.MatchRegex.Match(resp.Body) {
-				continue
-			}
-
-			if options.FilterStatusCode.Contains(resp.StatusCode) {
-				continue
-			}
-			if options.FilterLength.Contains(len(resp.Body)) {
+			if options.MatchLength != nil && !(slices.Contains(options.MatchLength, len(resp.Body))) {
 				continue
 			}
 
-			if !(options.FilterRegex.String() == "") && options.FilterRegex.Match(resp.Body) {
+			if options.FilterRegex != nil && !options.MatchRegex.Match(resp.Body) {
+				continue
+			}
+
+			if options.FilterStatusCode != nil && slices.Contains(options.FilterStatusCode, resp.StatusCode) {
+				continue
+			}
+			if options.FilterLength != nil && slices.Contains(options.FilterLength, len(resp.Body)) {
+				continue
+			}
+
+			if options.FilterRegex != nil && options.FilterRegex.Match(resp.Body) {
 				continue
 			}
 
 			//过滤重复回显
-			if simpleFilter.DoFilter(resp) {
+			if simpleFilter.DoFilter(&resp) {
 				continue
 			}
 			path, err := resp.Save(options.Output)
@@ -144,11 +152,9 @@ func main() {
 				log.Infof("failed to save file: %s", err)
 			}
 
-			line := fmt.Sprintf("%s %s [%s] [%d]", path, resp.Request.URL(), resp.Status, len(resp.Body))
+			line := fmt.Sprintf("%s %s [%d] [%d]", path, resp.Request.URL(), resp.StatusCode, len(resp.Body))
 			fmt.Fprintf(index, line)
-			if options.Verbose {
-				log.Infof("%s", line)
-			}
+			log.Infof("%s", line)
 		}
 		owg.Done()
 	}(responsesChan)
@@ -164,6 +170,16 @@ func main() {
 				continue
 			}
 			requestsChan <- r
+			//根据host增加备份文件路径, www.rar -> foo.com.www.rar
+			if options.Backup {
+				r2 := gohttp.DeepCopy(r)
+				r2.Path = r2.Hostname() + "." + r2.Path
+				if err != nil {
+					log.Warn(err)
+					continue
+				}
+				requestsChan <- r2
+			}
 		}
 	}
 

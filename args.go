@@ -5,6 +5,7 @@ import (
 	"github.com/KagamigawaMeguri/mag/opt"
 	"github.com/projectdiscovery/goflags"
 	"regexp"
+	"time"
 )
 
 // 参数处理
@@ -25,16 +26,17 @@ func processArgs() (*opt.Options, error) {
 	)
 
 	flagSet.CreateGroup("configs", "Configurations",
-		flagSet.StringVarP(&options.Method, "method", "x", "", "自定义请求方法"),
+		flagSet.StringVarP(&options.Method, "method", "x", "GET", "自定义请求方法"),
 		flagSet.StringVar(&options.Body, "body", "", "自定义请求包"),
-		flagSet.StringVarP(&options.Proxy, "gohttp-proxy", "proxy", "", "设置代理 (eg http://127.0.0.1:8080)"),
+		flagSet.StringVarP(&options.Proxy, "http-proxy", "proxy", "", "设置代理 (eg http://127.0.0.1:8080)"),
 		flagSet.VarP(&options.Headers, "header", "H", "自定义请求头"),
-		flagSet.DurationVarP(&options.Delay, "delay", "d", 5*10000000, "扫描时相同host间最小延迟 (eg: 200ms, 1s)"),
+		flagSet.DurationVarP(&options.Delay, "delay", "d", 5*time.Second, "扫描时相同host间最小延迟 (eg: 200ms, 1s)"),
 		flagSet.IntVar(&options.Timeout, "timeout", 10, "请求超时时间"),
 		flagSet.BoolVarP(&options.FollowRedirects, "follow", "f", true, "是否允许重定向"),
 		flagSet.BoolVar(&options.Slow, "slow", false, "服务器极度友好模式"),
-		flagSet.IntVarP(&options.Threads, "thread", "t", 25, "最大线程数"),
+		flagSet.IntVarP(&options.Threads, "thread", "t", 50, "最大线程数"),
 		flagSet.BoolVar(&options.RandomAgent, "random-agent", true, "是否启动随机UA-待开发"),
+		flagSet.BoolVar(&options.Backup, "bak", false, "是否启动备份文件扫描-待开发"),
 	)
 
 	var (
@@ -83,11 +85,11 @@ func processArgs() (*opt.Options, error) {
 	}
 
 	var err error
-	if options.MatchStatusCode, err = stringToMapsetInt(matchStatusCode); err != nil {
+	if options.MatchStatusCode, err = stringToSliceInt(matchStatusCode); err != nil {
 		return options, fmt.Errorf("invalid value for match status code option: %s", err)
 	}
 
-	if options.MatchLength, err = stringToMapsetInt(matchLength); err != nil {
+	if options.MatchLength, err = stringToSliceInt(matchLength); err != nil {
 		return options, fmt.Errorf("invalid value for match content length option: %s", err)
 	}
 
@@ -95,13 +97,14 @@ func processArgs() (*opt.Options, error) {
 		if options.MatchRegex, err = regexp.Compile(matchRegex); err != nil {
 			return options, fmt.Errorf("invalid value for match regex option: %s", err)
 		}
+	} else {
+		options.MatchRegex = nil
 	}
-
-	if options.FilterStatusCode, err = stringToMapsetInt(filterStatusCode); err != nil {
+	if options.FilterStatusCode, err = stringToSliceInt(filterStatusCode); err != nil {
 		return options, fmt.Errorf("invalid value for filter status code option: %s", err)
 	}
 
-	if options.FilterLength, err = stringToMapsetInt(filterLength); err != nil {
+	if options.FilterLength, err = stringToSliceInt(filterLength); err != nil {
 		return options, fmt.Errorf("invalid value for filter content length option: %s", err)
 	}
 
@@ -109,6 +112,8 @@ func processArgs() (*opt.Options, error) {
 		if options.FilterRegex, err = regexp.Compile(filterRegex); err != nil {
 			return options, fmt.Errorf("invalid value for filter regex option: %s", err)
 		}
+	} else {
+		options.FilterRegex = nil
 	}
 
 	return options, nil

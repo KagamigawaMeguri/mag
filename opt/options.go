@@ -2,7 +2,6 @@ package opt
 
 import (
 	"github.com/KagamigawaMeguri/mag/lib"
-	mapset "github.com/deckarep/golang-set/v2"
 	"regexp"
 	"time"
 )
@@ -21,13 +20,14 @@ type Options struct {
 	Timeout          int
 	FollowRedirects  bool
 	Slow             bool
+	Backup           bool
 	Proxy            string
-	MatchStatusCode  mapset.Set[int]
-	MatchLength      mapset.Set[int]
+	MatchStatusCode  []int
+	MatchLength      []int
 	MatchString      string
 	MatchRegex       *regexp.Regexp
-	FilterStatusCode mapset.Set[int]
-	FilterLength     mapset.Set[int]
+	FilterStatusCode []int
+	FilterLength     []int
 	FilterString     string
 	FilterRegex      *regexp.Regexp
 	Verbose          bool

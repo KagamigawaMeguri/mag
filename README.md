@@ -106,7 +106,7 @@ OUTPUT:
 CONFIGURATIONS:
    -x, -method string            自定义请求方法
    -body string                  自定义请求包
-   -proxy, -gohttp-proxy string  设置代理 (eg http://127.0.0.1:8080)
+   -proxy, -http-proxy string  设置代理 (eg http://127.0.0.1:8080)
    -H, -header string[]          自定义请求头
    -d, -delay duration           扫描时相同host间最小延迟 (eg: 200ms, 1s) (default 50ms)
    -timeout int                  请求超时时间 (default 10)

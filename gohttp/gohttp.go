@@ -30,7 +30,7 @@ type HTTPClient struct {
 	method    string
 }
 
-// 对参数进行一些包装，构造成HTTPClient
+// NewHTTPClient 对参数进行一些包装，构造成HTTPClient
 func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
 	var hc HTTPClient
 	var err error
@@ -59,9 +59,10 @@ func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
 		MinVersion: tls.VersionTLS10,
 	}
 	hc.client = &http.Client{
-		Timeout:       time.Duration(options.Timeout * 1000000),
+		Timeout:       time.Second * time.Duration(options.Timeout),
 		CheckRedirect: redirectFunc,
 		Transport: &http.Transport{
+			DisableKeepAlives:   true,
 			Proxy:               proxyURLFunc,
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 0,
@@ -89,9 +90,9 @@ func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
 func (hc *HTTPClient) Request(r Request) (Response, error) {
 	req, err := http.NewRequest(hc.method, r.URL(), hc.body)
 	if err != nil {
-		return Response{Request: r}, err
+		return Response{}, err
 	}
-	req.Host = r.host
+	req.Host = r.Host
 	//设置自定义header
 	for k, v := range hc.headers {
 		req.Header.Set(k, v)
@@ -107,7 +108,7 @@ func (hc *HTTPClient) Request(r Request) (Response, error) {
 		defer resp.Body.Close()
 	}
 	if err != nil {
-		return Response{Request: r}, err
+		return Response{}, err
 	}
 	// 提取响应头
 	hs := make([]string, 0)
