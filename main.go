@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/KagamigawaMeguri/mag/gohttp"
-	"github.com/KagamigawaMeguri/mag/opt"
+	"github.com/KagamigawaMeguri/mag/lib"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,8 @@ import (
 
 // 自定义错误
 const (
-	errTls = "tls: server selected unsupported protocol version 301"
+	errTls   = "tls: server selected unsupported protocol version 301"
+	errHttps = "http: server gave HTTP response to HTTPS client"
 )
 
 var (
@@ -23,21 +25,53 @@ var (
 	log          = logger.Sugar()
 )
 
-func initiate(c *opt.Options) ([]string, []string, *os.File) {
+func initiate(c *lib.Options) ([]string, []string, *os.File) {
 	// 读path文件
 	paths, err := readLines(c.Paths)
 	paths = Deduplicate(paths)
 	if err != nil {
 		log.Fatalf("failed to open paths file: %s", err)
 	}
-
 	// 读host文件
-	hosts, err := readLines(c.Hosts, "host")
+	hosts, err := readLines(c.Hosts)
 	hosts = Deduplicate(hosts)
 	if err != nil {
 		log.Fatalf("failed to open hosts file: %s", err)
 	}
-
+	// 探测协议与二次清洗
+	httpOpt := &lib.HttpOptions{
+		Method:          "HEAD",
+		Timeout:         c.Timeout,
+		FollowRedirects: true,
+		Proxy:           c.Proxy,
+	}
+	client, _ := gohttp.NewHTTPClient(httpOpt)
+	poolSize := c.Threads
+	pool := make(chan struct{}, poolSize)
+	hostChan := make(chan string)
+	var newHosts []string
+	go func() {
+		for i := range hostChan {
+			newHosts = append(newHosts, i)
+		}
+	}()
+	var wg sync.WaitGroup
+	wg.Add(len(hosts))
+	for _, url := range hosts {
+		pool <- struct{}{}
+		go func(u string) {
+			defer wg.Done()
+			host, err := ProbeScheme(u, client)
+			if err != nil {
+				log.Error(err)
+			}
+			hostChan <- host
+			<-pool
+		}(url)
+	}
+	wg.Wait()
+	newHosts = Deduplicate(newHosts)
+	log.Infof("fix hosts successfully...")
 	// 创建输出目录
 	err = os.MkdirAll(c.Output, 0750)
 	if err != nil {
@@ -50,7 +84,7 @@ func initiate(c *opt.Options) ([]string, []string, *os.File) {
 	if err != nil {
 		log.Fatalf("failed to open index file for writing: %s", err)
 	}
-	return hosts, paths, index
+	return newHosts, paths, index
 }
 
 func main() {
@@ -77,7 +111,7 @@ func main() {
 
 	requestsChan := make(chan gohttp.Request)
 	responsesChan := make(chan gohttp.Response)
-	//client, err := gohttp.NewHTTPClient(options)
+	client, err := gohttp.NewHTTPClient(gohttp.ParseHttpOptions(options))
 
 	// 请求处理
 	var wg sync.WaitGroup
@@ -87,7 +121,6 @@ func main() {
 		go func(items chan gohttp.Request) {
 			for r := range items {
 				rl.Block(r.Hostname()) //传入限速器判断是否限速
-				client, err := gohttp.NewHTTPClient(options)
 				if err != nil {
 					log.Error(err)
 					continue
@@ -120,10 +153,11 @@ func main() {
 			//if options.Verbose {
 			//	log.Debugf("%s [%d] [%d]", resp.Request.URL(), resp.StatusCode, len(resp.Body))
 			//}
-
-			if options.MatchStatusCode != nil && !(slices.Contains(options.MatchStatusCode, resp.StatusCode)) {
+			//默认保存200
+			if (options.MatchStatusCode != nil && !(slices.Contains(options.MatchStatusCode, resp.StatusCode))) || !slices.Contains(options.MatchStatusCode, http.StatusOK) {
 				continue
 			}
+
 			if options.MatchLength != nil && !(slices.Contains(options.MatchLength, len(resp.Body))) {
 				continue
 			}
@@ -153,7 +187,10 @@ func main() {
 			}
 
 			line := fmt.Sprintf("%s %s [%d] [%d]", path, resp.Request.URL(), resp.StatusCode, len(resp.Body))
-			fmt.Fprintf(index, line)
+			_, err = fmt.Fprintf(index, line)
+			if err != nil {
+				log.Fatalf("failed to write to index file: %s", err)
+			}
 			log.Infof("%s", line)
 		}
 		owg.Done()
@@ -194,6 +231,6 @@ func main() {
 func initLogger() (*zap.Logger, error) {
 	cfg := zap.NewDevelopmentConfig()
 	cfg.DisableStacktrace = true
-	cfg.DisableCaller = true
+	cfg.DisableCaller = false
 	return cfg.Build()
 }

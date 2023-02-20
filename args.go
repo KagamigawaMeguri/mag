@@ -2,16 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/KagamigawaMeguri/mag/opt"
+	"github.com/KagamigawaMeguri/mag/lib"
 	"github.com/projectdiscovery/goflags"
 	"regexp"
 	"time"
 )
 
 // 参数处理
-func processArgs() (*opt.Options, error) {
+func processArgs() (*lib.Options, error) {
 	//接收参数
-	options := &opt.Options{}
+	options := &lib.Options{}
 	flagSet := goflags.NewFlagSet()
 	flagSet.SetDescription("兼顾效率与负载的多任务目录扫描器")
 

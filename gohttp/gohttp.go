@@ -3,7 +3,7 @@ package gohttp
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/KagamigawaMeguri/mag/opt"
+	"github.com/KagamigawaMeguri/mag/lib"
 	"io"
 	"net/http"
 	"net/url"
@@ -30,13 +30,25 @@ type HTTPClient struct {
 	method    string
 }
 
+func ParseHttpOptions(options *lib.Options) *lib.HttpOptions {
+	return &lib.HttpOptions{
+		Method:          options.Method,
+		Headers:         options.Headers,
+		RandomAgent:     options.RandomAgent,
+		Body:            options.Body,
+		Timeout:         options.Timeout,
+		FollowRedirects: options.FollowRedirects,
+		Proxy:           options.Proxy,
+	}
+}
+
 // NewHTTPClient 对参数进行一些包装，构造成HTTPClient
-func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
+func NewHTTPClient(opt *lib.HttpOptions) (*HTTPClient, error) {
 	var hc HTTPClient
 	var err error
 	var proxyURLFunc func(*http.Request) (*url.URL, error)
-	if options.Proxy != "" {
-		proxyURL, err := url.Parse(options.Proxy)
+	if opt.Proxy != "" {
+		proxyURL, err := url.Parse(opt.Proxy)
 		if err != nil {
 			return nil, fmt.Errorf("proxy URL is invalid (%w)", err)
 		}
@@ -46,7 +58,7 @@ func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
 	}
 
 	var redirectFunc func(req *http.Request, via []*http.Request) error
-	if !options.FollowRedirects {
+	if !opt.FollowRedirects {
 		redirectFunc = func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		}
@@ -59,7 +71,7 @@ func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
 		MinVersion: tls.VersionTLS10,
 	}
 	hc.client = &http.Client{
-		Timeout:       time.Second * time.Duration(options.Timeout),
+		Timeout:       time.Second * time.Duration(opt.Timeout),
 		CheckRedirect: redirectFunc,
 		Transport: &http.Transport{
 			DisableKeepAlives:   true,
@@ -68,23 +80,45 @@ func NewHTTPClient(options *opt.Options) (*HTTPClient, error) {
 			MaxIdleConnsPerHost: 0,
 			TLSClientConfig:     &tlsConfig,
 		}}
-	hc.headers, err = options.Headers.TransformMap()
+	hc.headers, err = opt.Headers.TransformMap()
 	if err != nil {
 		return nil, err
 	}
-	if options.Method == "" {
+	if opt.Method == "" {
 		// 默认get
 		hc.method = http.MethodGet
 	} else {
-		hc.method = options.Method
+		hc.method = opt.Method
 	}
 
-	if options.Body == "" {
+	if opt.Body == "" {
 		hc.body = nil
 	} else {
-		hc.body = strings.NewReader(options.Body)
+		hc.body = strings.NewReader(opt.Body)
 	}
 	return &hc, nil
+}
+
+func (hc *HTTPClient) SimpleRequest(url string, method string) (Response, error) {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return Response{}, err
+	}
+	req.Header.Set("User-Agent", defaultHeaders["User-Agent"])
+	resp, err := hc.client.Do(req)
+	if resp != nil {
+		defer func(Body io.ReadCloser) {
+			_ = Body.Close()
+		}(resp.Body)
+	}
+	if err != nil {
+		return Response{}, err
+	}
+	return Response{
+		client:     hc,
+		Status:     resp.Status,
+		StatusCode: resp.StatusCode,
+	}, nil
 }
 
 func (hc *HTTPClient) Request(r Request) (Response, error) {
@@ -105,7 +139,9 @@ func (hc *HTTPClient) Request(r Request) (Response, error) {
 	}
 	resp, err := hc.client.Do(req)
 	if resp != nil {
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			_ = Body.Close()
+		}(resp.Body)
 	}
 	if err != nil {
 		return Response{}, err
@@ -130,5 +166,5 @@ func (hc *HTTPClient) Request(r Request) (Response, error) {
 		StatusCode: resp.StatusCode,
 		headers:    hs,
 		Body:       body,
-	}, err
+	}, nil
 }

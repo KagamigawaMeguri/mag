@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/KagamigawaMeguri/mag/gohttp"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -28,12 +30,14 @@ func isDir(path string) bool {
 }
 
 // 逐行读取文件
-func readLines(filename string, mode ...string) ([]string, error) {
+func readLines(filename string) ([]string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return []string{}, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		_ = f.Close()
+	}(f)
 
 	lines := make([]string, 0)
 	sc := bufio.NewScanner(f)
@@ -44,17 +48,7 @@ func readLines(filename string, mode ...string) ([]string, error) {
 		if s == "\n" || s == "\r\n" {
 			continue
 		}
-		if len(mode) > 0 && mode[0] == "host" {
-			// 增加scheme
-			if host, err := addScheme(s); err == nil {
-				lines = append(lines, host)
-			} else {
-				return nil, err
-			}
-		} else {
-			lines = append(lines, s)
-		}
-
+		lines = append(lines, s)
 	}
 
 	return lines, sc.Err()
@@ -78,8 +72,8 @@ func stringToSliceInt(s string) ([]int, error) {
 	return set, nil
 }
 
-// 增加scheme
-func addScheme(host string) (string, error) {
+// 探测scheme
+func ProbeScheme(host string, client *gohttp.HTTPClient) (string, error) {
 	if !strings.HasPrefix(host, "http") {
 		re := regexp.MustCompile(`^[^/]+:(\d+)`)
 		match := re.FindStringSubmatch(host)
@@ -97,6 +91,29 @@ func addScheme(host string) (string, error) {
 				// 存在其他端口，默认为http
 				host = "http://" + host
 			}
+		}
+		_, err := client.SimpleRequest(host, "HEAD")
+		log.Infof("host: %s", host)
+		if err != nil {
+			if strings.Contains(err.Error(), "EOF") {
+				//判断为EOF，重试
+				resp2, err2 := client.SimpleRequest(host, "GET")
+				if err2 == nil && resp2.StatusCode == http.StatusOK {
+					return host, nil
+				}
+			}
+			if strings.Contains(err.Error(), "Client.Timeout") {
+				//超时
+				return host, nil
+			}
+			if strings.Contains(err.Error(), errHttps) {
+				//说明为http
+				host = strings.Replace(host, "https", "http", 1)
+				return host, nil
+			} else if err != nil && strings.Contains(err.Error(), "An existing connection was forcibly closed by the remote host") {
+				return host, nil
+			}
+			log.Error(err)
 		}
 	}
 	return host, nil

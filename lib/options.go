@@ -1,7 +1,6 @@
-package opt
+package lib
 
 import (
-	"github.com/KagamigawaMeguri/mag/lib"
 	"regexp"
 	"time"
 )
@@ -12,7 +11,7 @@ type Options struct {
 	Output           string
 	DisableOutput    bool
 	Method           string
-	Headers          lib.CustomHeaders
+	Headers          CustomHeaders
 	RandomAgent      bool
 	Body             string
 	Threads          int
@@ -31,4 +30,14 @@ type Options struct {
 	FilterString     string
 	FilterRegex      *regexp.Regexp
 	Verbose          bool
+}
+
+type HttpOptions struct {
+	Method          string
+	Headers         CustomHeaders
+	RandomAgent     bool
+	Body            string
+	Timeout         int
+	FollowRedirects bool
+	Proxy           string
 }
