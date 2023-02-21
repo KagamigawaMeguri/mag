@@ -152,11 +152,11 @@ func main() {
 	go func(items chan gohttp.Response) {
 		for resp := range items {
 			//默认保存200
-			if (options.MatchStatusCode != nil && !(slices.Contains(options.MatchStatusCode, resp.StatusCode))) || !slices.Contains(options.MatchStatusCode, http.StatusOK) {
+			if (len(options.MatchStatusCode) != 0 && !(slices.Contains(options.MatchStatusCode, resp.StatusCode))) || resp.StatusCode != http.StatusOK {
 				continue
 			}
 
-			if options.MatchLength != nil && !(slices.Contains(options.MatchLength, len(resp.Body))) {
+			if len(options.MatchLength) != 0 && !(slices.Contains(options.MatchLength, len(resp.Body))) {
 				continue
 			}
 
@@ -164,10 +164,10 @@ func main() {
 				continue
 			}
 
-			if options.FilterStatusCode != nil && slices.Contains(options.FilterStatusCode, resp.StatusCode) {
+			if len(options.FilterStatusCode) != 0 && slices.Contains(options.FilterStatusCode, resp.StatusCode) {
 				continue
 			}
-			if options.FilterLength != nil && slices.Contains(options.FilterLength, len(resp.Body)) {
+			if len(options.FilterLength) != 0 && slices.Contains(options.FilterLength, len(resp.Body)) {
 				continue
 			}
 
