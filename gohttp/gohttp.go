@@ -21,7 +21,7 @@ const (
 	ErrTimeout    = "Client.Timeout"
 	ErrClose      = "An existing connection was forcibly closed by the remote host"
 	ErrEOF        = "EOF"
-	ErrNoSuchHost = "dial tcp: lookup gdtest.imut.edu.cn: no such host"
+	ErrNoSuchHost = "no such host"
 )
 
 var (

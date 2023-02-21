@@ -40,12 +40,14 @@ func readLines(filename string) ([]string, error) {
 	lines := make([]string, 0)
 	sc := bufio.NewScanner(f)
 	var s string
+	bar := initProgressBar(-1, fmt.Sprintf("loading file: %s", filename))
 	for sc.Scan() {
 		s = sc.Text()
 		//跳过空行
 		if s == "\n" || s == "\r\n" {
 			continue
 		}
+		_ = bar.Add(1)
 		lines = append(lines, s)
 	}
 

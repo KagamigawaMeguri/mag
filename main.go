@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/KagamigawaMeguri/mag/gohttp"
 	"github.com/KagamigawaMeguri/mag/lib"
+	"github.com/schollz/progressbar/v3"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
 	"net/http"
@@ -51,17 +52,21 @@ func initiate(c *lib.Options) ([]string, []string, *os.File) {
 	}()
 	var wg sync.WaitGroup
 	wg.Add(len(hosts))
+	bar := initProgressBar(len(hosts), "Probing hosts...")
 	for _, url := range hosts {
 		pool <- struct{}{}
 		go func(u string) {
-			defer wg.Done()
+			defer func() {
+				_ = bar.Add(1)
+				wg.Done()
+			}()
 			host, err := addScheme(u)
 			if err != nil {
 				log.Errorf("[Skip] %s", err)
 				return
 			}
 			host, err = client.Probe(host, "GET", 1)
-			if err != nil {
+			if err != nil && c.Verbose {
 				log.Error(err)
 			}
 			hostChan <- host
@@ -98,7 +103,7 @@ func main() {
 	hosts, paths, index := initiate(options)
 
 	// 打印任务情况
-	fmt.Printf("[+] Hostlist: %s\n"+
+	fmt.Printf("\n[+] Hostlist: %s\n"+
 		"[+] Method: %s\n"+
 		"[+] Threads: %d\n"+
 		"[+] Pathlist: %s\n"+
@@ -111,13 +116,14 @@ func main() {
 	responsesChan := make(chan gohttp.Response)
 	client, err := gohttp.NewHTTPClient(gohttp.ParseHttpOptions(options))
 	skipErrorRe := regexp.MustCompile(fmt.Sprintf("%s|%s|%s|%s|%s|%s", gohttp.ErrTls, gohttp.ErrEOF, gohttp.ErrTimeout, gohttp.ErrClose, gohttp.ErrHttps, gohttp.ErrNoSuchHost))
-
+	bar := initProgressBar(len(hosts)*len(paths), "Scanning...")
 	// 请求处理
 	var wg sync.WaitGroup
 	for i := 0; i < options.Threads; i++ {
 		wg.Add(1)
 		//不使用闭包，以求减少资源
 		go func(items chan gohttp.Request) {
+			defer wg.Done()
 			for r := range items {
 				rl.Block(r.Hostname()) //传入限速器判断是否限速
 				if err != nil {
@@ -134,9 +140,9 @@ func main() {
 				if options.Verbose {
 					log.Debug(r.URL())
 				}
+				_ = bar.Add(1)
 				responsesChan <- ret //发送请求，返回包写入responses channel
 			}
-			wg.Done()
 		}(requestsChan)
 	}
 
@@ -225,4 +231,20 @@ func initLogger() (*zap.Logger, error) {
 	cfg.DisableStacktrace = true
 	cfg.DisableCaller = false
 	return cfg.Build()
+}
+
+func initProgressBar(maxBytes int, desc string) *progressbar.ProgressBar {
+	return progressbar.NewOptions(maxBytes,
+		progressbar.OptionSetDescription(desc),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+	)
+
 }
