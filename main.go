@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"sync"
 )
 
@@ -110,6 +110,7 @@ func main() {
 	requestsChan := make(chan gohttp.Request)
 	responsesChan := make(chan gohttp.Response)
 	client, err := gohttp.NewHTTPClient(gohttp.ParseHttpOptions(options))
+	skipErrorRe := regexp.MustCompile(fmt.Sprintf("%s|%s|%s|%s|%s|%s", gohttp.ErrTls, gohttp.ErrEOF, gohttp.ErrTimeout, gohttp.ErrClose, gohttp.ErrHttps, gohttp.ErrNoSuchHost))
 
 	// 请求处理
 	var wg sync.WaitGroup
@@ -125,7 +126,7 @@ func main() {
 				}
 				ret, err := client.Request(r)
 				if err != nil {
-					if !strings.Contains(err.Error(), gohttp.ErrTls) {
+					if !skipErrorRe.Match([]byte(err.Error())) {
 						log.Error(err)
 					}
 					continue

@@ -30,7 +30,7 @@ func processArgs() (*lib.Options, error) {
 		flagSet.StringVar(&options.Body, "body", "", "自定义请求包"),
 		flagSet.StringVarP(&options.Proxy, "http-proxy", "proxy", "", "设置代理 (eg http://127.0.0.1:8080)"),
 		flagSet.VarP(&options.Headers, "header", "H", "自定义请求头"),
-		flagSet.DurationVarP(&options.Delay, "delay", "d", 5*time.Second, "扫描时相同host间最小延迟 (eg: 200ms, 1s)"),
+		flagSet.DurationVarP(&options.Delay, "delay", "d", 3*time.Second, "扫描时相同host间最小延迟 (eg: 200ms, 1s)"),
 		flagSet.IntVar(&options.Timeout, "timeout", 10, "请求超时时间"),
 		flagSet.BoolVarP(&options.FollowRedirects, "follow", "f", true, "是否允许重定向"),
 		flagSet.BoolVar(&options.Slow, "slow", false, "服务器极度友好模式"),
