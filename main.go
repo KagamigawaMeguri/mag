@@ -13,12 +13,6 @@ import (
 	"sync"
 )
 
-// 自定义错误
-const (
-	errTls   = "tls: server selected unsupported protocol version 301"
-	errHttps = "http: server gave HTTP response to HTTPS client"
-)
-
 var (
 	simpleFilter = NewSimpleFilter(uint8(25))
 	logger, _    = initLogger()
@@ -61,7 +55,12 @@ func initiate(c *lib.Options) ([]string, []string, *os.File) {
 		pool <- struct{}{}
 		go func(u string) {
 			defer wg.Done()
-			host, err := ProbeScheme(u, client)
+			host, err := addScheme(u)
+			if err != nil {
+				log.Errorf("[Skip] %s", err)
+				return
+			}
+			host, err = client.Probe(host, "GET", 1)
 			if err != nil {
 				log.Error(err)
 			}
@@ -71,7 +70,6 @@ func initiate(c *lib.Options) ([]string, []string, *os.File) {
 	}
 	wg.Wait()
 	newHosts = Deduplicate(newHosts)
-	log.Infof("fix hosts successfully...")
 	// 创建输出目录
 	err = os.MkdirAll(c.Output, 0750)
 	if err != nil {
@@ -127,7 +125,9 @@ func main() {
 				}
 				ret, err := client.Request(r)
 				if err != nil {
-					log.Error(err)
+					if !strings.Contains(err.Error(), gohttp.ErrTls) {
+						log.Error(err)
+					}
 					continue
 				}
 				if options.Verbose {
@@ -144,15 +144,6 @@ func main() {
 	owg.Add(1)
 	go func(items chan gohttp.Response) {
 		for resp := range items {
-			if resp.Err != nil {
-				if !strings.Contains(err.Error(), errTls) {
-					log.Infof("%s", err)
-				}
-				continue
-			}
-			//if options.Verbose {
-			//	log.Debugf("%s [%d] [%d]", resp.Request.URL(), resp.StatusCode, len(resp.Body))
-			//}
 			//默认保存200
 			if (options.MatchStatusCode != nil && !(slices.Contains(options.MatchStatusCode, resp.StatusCode))) || !slices.Contains(options.MatchStatusCode, http.StatusOK) {
 				continue
@@ -186,7 +177,7 @@ func main() {
 				log.Infof("failed to save file: %s", err)
 			}
 
-			line := fmt.Sprintf("%s %s [%d] [%d]", path, resp.Request.URL(), resp.StatusCode, len(resp.Body))
+			line := fmt.Sprintf("%s %s [%d] [%d]\n", path, resp.Request.URL(), resp.StatusCode, len(resp.Body))
 			_, err = fmt.Fprintf(index, line)
 			if err != nil {
 				log.Fatalf("failed to write to index file: %s", err)

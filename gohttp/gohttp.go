@@ -14,6 +14,16 @@ import (
 // 最大获取100K的响应，适用于绝大部分场景
 const defaultResponseLength = 10240
 
+// 自定义错误
+const (
+	ErrTls        = "tls: server selected unsupported protocol version 301"
+	ErrHttps      = "http: server gave HTTP response to HTTPS client"
+	ErrTimeout    = "Client.Timeout"
+	ErrClose      = "An existing connection was forcibly closed by the remote host"
+	ErrEOF        = "EOF"
+	ErrNoSuchHost = "dial tcp: lookup gdtest.imut.edu.cn: no such host"
+)
+
 var (
 	//默认头
 	defaultHeaders = map[string]string{
@@ -167,4 +177,48 @@ func (hc *HTTPClient) Request(r Request) (Response, error) {
 		headers:    hs,
 		Body:       body,
 	}, nil
+}
+
+func (hc *HTTPClient) Probe(host string, method string, depth int) (string, error) {
+	_, err := hc.SimpleRequest(host, method)
+	if err != nil {
+		//忽视部分错误
+		if strings.Contains(err.Error(), ErrEOF) {
+			//判断为EOF，重试
+			if depth > 0 {
+				host, err2 := hc.Probe(transformScheme(host), method, depth-1)
+				if err2 == nil {
+					return host, nil
+				}
+			}
+			return host, nil
+		}
+		if strings.Contains(err.Error(), ErrTimeout) {
+			//超时
+			return host, nil
+		}
+		if strings.Contains(err.Error(), ErrHttps) {
+			//说明为http
+			host = transformScheme(host)
+			return host, nil
+		}
+		if strings.Contains(err.Error(), ErrClose) {
+			return host, nil
+		}
+		if strings.Contains(err.Error(), ErrNoSuchHost) {
+			//域名解析失败，跳过该域名
+			return host, err
+		}
+		return host, err
+	}
+	return host, nil
+}
+
+func transformScheme(url string) string {
+	if strings.HasPrefix(url, "https") {
+		return strings.Replace(url, "https", "http", 1)
+	} else if strings.HasPrefix(url, "http") {
+		return strings.Replace(url, "http", "https", 1)
+	}
+	return url
 }
